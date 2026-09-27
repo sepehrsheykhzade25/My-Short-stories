@@ -40,6 +40,21 @@ BRIGHT_GOLD = "#D9B26B"
 THIN = 2.2
 MED = 3.0
 
+# ----------------------------------------------------------------------
+# The book/infinity-band/stump emblem and the AMURDAT/Farsi wordmark are
+# cropped straight out of the reference logo (background made transparent)
+# rather than hand-built from vector primitives — repeated attempts to
+# redraw those shapes by hand kept missing the logo's actual proportions
+# and line quality. Only the script (real Old Persian text, animated
+# separately) and the tree/cut/regrow build-up remain hand-drawn.
+# ----------------------------------------------------------------------
+EMBLEM_PATH = "assets/emblem.png"
+WORDMARK_PATH = "assets/wordmark.png"
+EMBLEM_HEIGHT = 5.0
+EMBLEM_CENTER = np.array([0, 0.1, 0])
+SCRIPT_CENTER = np.array([0, 0.22, 0])
+STUMP_TOP_Y = -0.64
+
 
 # ========================================================================
 # Reusable hand-drawn-style builders
@@ -167,85 +182,6 @@ def make_stump(center=ORIGIN, width=1.6):
     return stump
 
 
-def make_book(center=ORIGIN, width=2.8, height=1.3):
-    """Open book viewed from the front: each page is a proper quadrilateral
-    silhouette (inner top dip -> outer top corner -> outer bottom corner
-    -> inner spine tip), plus a couple of thin parallel curves near the
-    bottom of each page suggesting the stacked paper edge — matching the
-    logo's real book construction rather than a single rounded petal."""
-    hw = width / 2
-    top_dip = center + UP * height * 0.20
-    spine_tip = center + DOWN * height * 0.5
-
-    def outer_top(direction):
-        return center + direction * hw + UP * height * 0.42
-
-    def outer_bottom(direction):
-        return center + direction * hw * 0.9 + DOWN * height * 0.08
-
-    def page(direction):
-        pts = [top_dip, outer_top(direction), outer_bottom(direction), spine_tip]
-        curve = VMobject(color=VIOLET, stroke_width=MED)
-        curve.set_points_smoothly(pts)
-        return curve
-
-    left_page = page(LEFT)
-    right_page = page(RIGHT)
-
-    # thin parallel "page stack" curves near the bottom of each page
-    stacks = VGroup()
-    for direction in (LEFT, RIGHT):
-        ob = outer_bottom(direction)
-        for k in range(1, 3):
-            off = UP * 0.055 * k
-            a = ob + off + direction * (-0.05 * k)
-            b = spine_tip + off
-            mid = (a + b) / 2 + DOWN * 0.02
-            s = VMobject(color=VIOLET, stroke_width=1.1)
-            s.set_points_smoothly([a, mid, b])
-            stacks.add(s)
-
-    spine_line = Line(top_dip, spine_tip, color=VIOLET, stroke_width=1.6)
-
-    book = VGroup(left_page, right_page, spine_line, stacks)
-    book.left_page = left_page
-    book.right_page = right_page
-    book.spine_line = spine_line
-    book.spine_point = spine_tip
-    book.stacks = stacks
-    return book
-
-
-def make_infinity_band(stump_top, book_spine, loop_radius=0.62, overlap=0.08):
-    """A clean figure-eight — two circles just touching at the center —
-    linking stump to book, plus a few thin fan lines tracing outward to
-    the book's and stump's outer edges."""
-    cx = (stump_top[0] + book_spine[0]) / 2
-    cy = (stump_top[1] + book_spine[1]) / 2
-    d = 2 * loop_radius - overlap
-    left_c = np.array([cx - d / 2, cy, 0])
-    right_c = np.array([cx + d / 2, cy, 0])
-
-    lobe_l = Circle(radius=loop_radius, color=VIOLET, stroke_width=1.8).move_to(left_c)
-    lobe_r = Circle(radius=loop_radius, color=VIOLET, stroke_width=1.8).move_to(right_c)
-
-    total_width = d + 2 * loop_radius
-    fan = VGroup()
-    for t in np.linspace(-1, 1, 5):
-        start = stump_top + RIGHT * t * total_width * 0.42
-        end = book_spine + RIGHT * t * total_width * 0.24
-        mid = np.array([cx + t * total_width * 0.08, cy, 0])
-        curve = VMobject(color=LAVENDER, stroke_width=1.1)
-        curve.set_points_smoothly([start, mid, end])
-        fan.add(curve)
-
-    band = VGroup(fan, lobe_l, lobe_r)
-    band.fan = fan
-    band.lobe_l = lobe_l
-    band.lobe_r = lobe_r
-    return band
-
-
 SCRIPT_TEXT = "\U000103BA\U000103C1\U000103D1\U000103A2 \U000103A0\U000103B6\U000103BC\U000103AB\U000103A0 \U000103AD\U000103A0\U000103B4\U000103A0"
 # Old Persian cuneiform (U+103A0-U+103D5), supplied by the brand as the
 # correct reading of the logo's script band.
@@ -275,11 +211,10 @@ class AmurdatIntro(Scene):
         bg.set_z_index(-10)
         self.add(bg)
 
-        # Layout anchors (portrait canvas: logo cluster sits in the upper
-        # two-thirds, wordmark row near the bottom, with clear air between
-        # the stump's roots and the wordmark).
-        stump_center = np.array([0, -1.4, 0])
-        book_center = np.array([0, 1.75, 0])
+        # Layout anchors. stump_center matches where the real emblem
+        # image's stump sits (STUMP_TOP_Y), so the hand-built stump used
+        # for the cut/regrow build-up lines up with it for the crossfade.
+        stump_center = np.array([0, STUMP_TOP_Y, 0])
         ground_y = stump_center[1] - 0.05
 
         # ----------------------------------------------------------
@@ -345,7 +280,10 @@ class AmurdatIntro(Scene):
             self.play(bg.animate.set_fill(CREAM), run_time=0.16)
 
             # regrow (partial) — FadeIn preserves each part's own
-            # fill/stroke opacity instead of flattening it to 1.
+            # fill/stroke opacity instead of flattening it to 1. Remove
+            # the just-cut trunk first: stretch_to_fit_height squashes it
+            # but leaves its stroke visible as a thin bar if not removed.
+            self.remove(tree)
             new_tree = make_tree(trunk_h=heights[cut_i], canopy_r=canopy_rs[cut_i],
                                   seed=5 + cut_i, base_point=stump_center)
             self.play(FadeIn(new_tree), run_time=0.5, rate_func=smooth)
@@ -360,34 +298,29 @@ class AmurdatIntro(Scene):
             bg.animate.set_fill(CREAM),
             run_time=0.32, rate_func=rush_into,
         )
+        self.remove(tree)
         self.wait(0.18)
 
         # ----------------------------------------------------------
-        # Beat 5  (0:04.5 - 0:05.5)  Book forms from the stump
+        # Beat 5  (0:04.5 - 0:05.5)  Book forms from the stump: the
+        # hand-built stump dissolves into the real book+infinity+stump
+        # emblem (cropped from the logo, script band left transparent so
+        # the animated script in beat 6 can write into that exact gap).
         # ----------------------------------------------------------
-        stump_top = stump_center + UP * 0.0
-        book = make_book(center=book_center, width=2.8, height=1.3)
-        band = make_infinity_band(stump_top + UP * 0.15, book.spine_point,
-                                   loop_radius=0.62, overlap=0.1)
+        emblem = ImageMobject(EMBLEM_PATH)
+        emblem.height = EMBLEM_HEIGHT
+        emblem.move_to(EMBLEM_CENTER)
 
         self.play(
-            Create(band.fan), run_time=0.35,
+            FadeOut(stump, run_time=0.6),
+            FadeIn(emblem, scale=1.05, run_time=0.7),
         )
-        self.play(
-            Create(band.lobe_l), Create(band.lobe_r),
-            run_time=0.35,
-        )
-        self.play(
-            Create(book.left_page), Create(book.right_page),
-            Create(book.spine_line), Create(book.stacks),
-            run_time=0.3,
-        )
+        self.wait(0.3)
 
         # ----------------------------------------------------------
         # Beat 6  (0:05.5 - 0:06.5)  Ancient script writes in
         # ----------------------------------------------------------
-        script_center = band.get_center() + UP * 0.02
-        script = make_script(script_center, target_width=2.5, color=DIM_GOLD)
+        script = make_script(SCRIPT_CENTER, target_width=3.6, color=DIM_GOLD)
 
         self.play(Write(script), run_time=0.7)
         self.play(script.animate.set_stroke(color=BRIGHT_GOLD), run_time=0.3)
@@ -404,22 +337,18 @@ class AmurdatIntro(Scene):
             "“Knowledge is the only Immortal”",
             font="Noto Serif", slant=ITALIC, color=VIOLET,
         ).scale(0.34)
-        translation.next_to(script, DOWN, buff=0.45)
+        translation.next_to(emblem, DOWN, buff=0.3)
         self.play(FadeIn(translation, shift=UP * 0.08), run_time=0.8)
 
         # ----------------------------------------------------------
         # Beat 9  (0:07.6 - 0:08.0)  Wordmark locks, translation fades
         # ----------------------------------------------------------
-        wordmark = Text("AMURDAT", font="Sans", weight=BOLD, color=VIOLET)
-        wordmark.scale(0.38)
-        wordmark.to_corner(DL, buff=0.35)
-
-        farsi = Text("آموردات", font="Noto Naskh Arabic", weight=BOLD, color=VIOLET)
-        farsi.scale(0.38)
-        farsi.to_corner(DR, buff=0.35)
+        wordmark = ImageMobject(WORDMARK_PATH)
+        wordmark.width = 3.7
+        wordmark.to_edge(DOWN, buff=0.4)
 
         self.play(
-            FadeIn(wordmark), FadeIn(farsi),
+            FadeIn(wordmark),
             FadeOut(translation),
             run_time=0.4,
         )
