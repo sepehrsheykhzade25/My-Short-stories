@@ -34,6 +34,8 @@ VIOLET = "#4A3B7A"
 GOLD = "#B08D5A"
 LAVENDER = "#C9C3D9"
 NIGHT = "#2A2438"
+DIM_GOLD = "#8B7255"
+BRIGHT_GOLD = "#D9B26B"
 
 THIN = 2.2
 MED = 3.0
@@ -209,38 +211,20 @@ def make_infinity_band(stump_top, book_spine, width=1.7, height=0.95):
     return band
 
 
-def make_script_glyphs(center, n=13, scale=1.0, color=GOLD):
-    """Procedural stand-in for the logo's ancient-script band: clustered
-    vertical strokes with a horizontal cap, echoing the reference logo's
-    glyph rhythm (built as vectors, not a font, so it can be drawn
-    stroke-by-stroke)."""
-    rng = np.random.default_rng(42)
-    glyphs = VGroup()
-    x = 0.0
-    for i in range(n):
-        bars = rng.integers(1, 4)
-        w = 0.05 + 0.045 * bars
-        glyph = VGroup()
-        h = 0.16 * scale
-        for j in range(bars):
-            bx = x + j * 0.05 * scale
-            stem = Line(
-                np.array([bx, -h, 0]), np.array([bx, h * 0.35, 0]),
-                color=color, stroke_width=1.6,
-            )
-            glyph.add(stem)
-        cap = Line(
-            np.array([x - 0.02, h * 0.35, 0]),
-            np.array([x + (bars - 1) * 0.05 * scale + 0.02, h * 0.35, 0]),
-            color=color, stroke_width=1.6,
-        )
-        glyph.add(cap)
-        glyphs.add(glyph)
-        x += w * scale + 0.06 * scale
-        if rng.random() < 0.22:
-            x += 0.12 * scale  # word gap
-    glyphs.move_to(center)
-    return glyphs
+SCRIPT_TEXT = "\U000103BA\U000103C1\U000103D1\U000103A2 \U000103A0\U000103B6\U000103BC\U000103AB\U000103A0 \U000103AD\U000103A0\U000103B4\U000103A0"
+# Old Persian cuneiform (U+103A0-U+103D5), supplied by the brand as the
+# correct reading of the logo's script band.
+
+
+def make_script(center, target_width=2.6, color=GOLD, stroke_w=1.6):
+    """The real Old Persian text, rendered stroke-only (no fill) so it
+    reads as thin linework, matching every other element in the mark."""
+    script = Text(SCRIPT_TEXT, font="Noto Sans Old Persian")
+    script.set_fill(opacity=0)
+    script.set_stroke(color=color, width=stroke_w, opacity=1)
+    script.width = target_width
+    script.move_to(center)
+    return script
 
 
 # ========================================================================
@@ -369,19 +353,15 @@ class AmurdatIntro(Scene):
         # Beat 6  (0:05.5 - 0:06.5)  Ancient script writes in
         # ----------------------------------------------------------
         script_center = band.get_center() + UP * 0.02
-        script = make_script_glyphs(script_center, n=13, scale=0.85, color=GOLD)
-        script.set_opacity(0.15)
+        script = make_script(script_center, target_width=2.5, color=DIM_GOLD)
 
-        self.play(
-            LaggedStart(*[Create(g) for g in script], lag_ratio=0.6),
-            script.animate.set_opacity(1.0).set_color("#D9B26B"),
-            run_time=1.0,
-        )
+        self.play(Write(script), run_time=0.7)
+        self.play(script.animate.set_stroke(color=BRIGHT_GOLD), run_time=0.3)
 
         # ----------------------------------------------------------
         # Beat 7  (0:06.5 - 0:06.8)  Script settles to resting gold
         # ----------------------------------------------------------
-        self.play(script.animate.set_color(GOLD), run_time=0.3)
+        self.play(script.animate.set_stroke(color=GOLD), run_time=0.3)
 
         # ----------------------------------------------------------
         # Beat 8  (0:06.8 - 0:07.6)  Translation fades in
