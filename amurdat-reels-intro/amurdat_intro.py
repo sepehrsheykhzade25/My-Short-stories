@@ -59,21 +59,42 @@ def organic_loop(radius=1.0, bumps=10, wobble=0.14, seed=0, color=VIOLET, sw=THI
     return shape
 
 
-def make_tree(trunk_h=3.0, canopy_r=1.15, seed=1, base_point=ORIGIN):
-    """Trunk (with two small branch forks) + organic canopy outline."""
-    trunk = VGroup()
-    top = base_point + UP * trunk_h
-    main = Line(base_point, top, color=VIOLET, stroke_width=MED)
-    fork_l = Line(top, top + UP * 0.35 + LEFT * 0.32, color=VIOLET, stroke_width=THIN)
-    fork_r = Line(top, top + UP * 0.35 + RIGHT * 0.32, color=VIOLET, stroke_width=THIN)
-    mid = base_point + UP * trunk_h * 0.6
-    branch_l = Line(mid, mid + UP * 0.4 + LEFT * 0.5, color=VIOLET, stroke_width=THIN)
-    branch_r = Line(mid, mid + UP * 0.4 + RIGHT * 0.5, color=VIOLET, stroke_width=THIN)
-    trunk.add(main, fork_l, fork_r, branch_l, branch_r)
+def curved_branch(start, end, bow=ORIGIN, color=VIOLET, sw=THIN):
+    """A gently bowed branch line (smooth curve, not a straight stick),
+    so it reads with the same flowing hand-drawn quality as the book
+    pages, infinity band and stump rings."""
+    mid = (start + end) / 2 + bow
+    b = VMobject(color=color, stroke_width=sw)
+    b.set_points_smoothly([start, mid, end])
+    return b
 
-    canopy = organic_loop(radius=canopy_r, bumps=11, wobble=0.16, seed=seed,
+
+def make_tree(trunk_h=3.0, canopy_r=1.15, seed=1, base_point=ORIGIN):
+    """A single gently bowed trunk with two short flourish branches near
+    the top, and one clean canopy outline — kept to a few deliberate
+    strokes with open negative space between them, matching the
+    logo's minimal, confident linework (single clean curves for the
+    book pages, infinity lobes, stump rings) rather than a dense tangle
+    of overlapping shapes."""
+    rng = np.random.default_rng(seed)
+    top = base_point + UP * trunk_h
+    bow = rng.uniform(-0.06, 0.06) * trunk_h
+
+    trunk = VGroup()
+    main = VMobject(color=VIOLET, stroke_width=2.6)
+    main.set_points_smoothly([
+        base_point, base_point + UP * trunk_h * 0.5 + RIGHT * bow, top,
+    ])
+    trunk.add(main)
+
+    for direction in (LEFT, RIGHT):
+        start = base_point + UP * trunk_h * 0.86 + RIGHT * bow * 0.86
+        end = start + UP * 0.3 + direction * 0.4
+        trunk.add(curved_branch(start, end, bow=direction * 0.08 + UP * 0.08, sw=THIN))
+
+    canopy = organic_loop(radius=canopy_r, bumps=9, wobble=0.1, seed=seed,
                            color=VIOLET, sw=THIN)
-    canopy.move_to(top + UP * canopy_r * 0.75)
+    canopy.move_to(top + UP * canopy_r * 0.8)
 
     group = VGroup(trunk, canopy)
     group.trunk = trunk
