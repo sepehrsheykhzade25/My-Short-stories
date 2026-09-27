@@ -4,13 +4,13 @@ Amurdat Reels Intro — 8s vertical (1080x1920) animation.
 Story: a tree stands on the logo's stump, time accelerates through
 day/night, the tree is cut and regrows twice (each cut on a night beat),
 the final cut leaves the stump, the book and its lines grow up out of the
-stump, the Old Persian script writes itself in, its translation appears,
-and the wordmark locks a final frame that is the logo itself.
+stump, the Old Persian script writes itself in, and the tagline and
+AMURDAT wordmark settle beneath a final frame that is the logo itself.
 
 The stump, book, infinity lines and wordmark are the real logo artwork
 (cut out by prepare_assets.py). The tree is drawn in the logo's own
 vocabulary: the stump's violet fill with carved grain lines for the
-trunk and limbs, and the grass-tuft leaf fans for the foliage.
+trunk and limbs, and the grass-tuft leaf for the foliage.
 
 Run:
     python prepare_assets.py                     # once, builds assets/
@@ -30,7 +30,8 @@ config.frame_width = config.frame_height * config.pixel_width / config.pixel_hei
 
 # Palette — sampled from the logo.
 PAPER = "#F9F3ED"
-NIGHT = "#2A2438"
+DUSK = "#1E1A33"
+DUSK_OPACITY = 0.5            # night dims the whole scene, it doesn't black it out
 BARK = "#5D4686"
 LEAF = "#8776A1"
 LEAF_LIGHT = "#B3A7CC"
@@ -49,20 +50,31 @@ EMBLEM_PX = (357, 440)
 FACE_PX = (180.0, 313.5)      # stump cut-face ellipse center
 FACE_A_PX, FACE_B_PX = 135.0, 22.5
 STUMP_CARVES_PX = (75.0, 102.0, 142.0, 188.0, 252.5)  # carved lines at the body's top
-SCRIPT_PX = (179.5, 209.5)    # center of the erased script band
+SCRIPT_PX = (179.5, 210.0)    # center of the script band
 SCRIPT_W_PX = 309.0
 REVEAL_FEATHER_PX = 45.0
 
-# Final layout: emblem, then the wordmark slot below it, centered as a block.
-EMBLEM_HEIGHT = 3.8
-WORDMARK_WIDTH = 2.81
-WORDMARK_GAP = 0.63
-BLOCK_CENTER_Y = 0.3
+K = 0.75                      # overall scale of the logo, tree and type
 
+# Trees: (trunk height, crown width, crown height, leaf size, leaf count),
+# in scene units at K=1.
+FULL_TREE = (1.3, 3.9, 2.1, 0.36, 320)
+SPROUT = (0.9, 1.25, 1.0, 0.24, 55)
+BROAD_TREE = (1.15, 3.5, 1.5, 0.34, 240)
+
+EMBLEM_HEIGHT = 3.8 * K
 S = EMBLEM_HEIGHT / EMBLEM_PX[1]
-_block_h = EMBLEM_HEIGHT + WORDMARK_GAP + WORDMARK_WIDTH * 58 / 590
-EMBLEM_TOP = BLOCK_CENTER_Y + _block_h / 2
+
+# Place the emblem so the full-grown tree (stump roots to crown top) sits
+# dead center in the frame.
+_trunk_h, _, _crown_h, _leaf, _ = FULL_TREE
+_tree_h = ((EMBLEM_PX[1] - FACE_PX[1]) * S
+           + K * (_trunk_h + _crown_h * 1.12 + _leaf * 0.66))
+EMBLEM_TOP = -_tree_h / 2 + EMBLEM_HEIGHT
 EMBLEM_CENTER = np.array([0, EMBLEM_TOP - EMBLEM_HEIGHT / 2, 0])
+
+TAGLINE_WIDTH = 2.67 * K
+WORDMARK_WIDTH = 0.86 * K
 
 
 def px(u, v):
@@ -117,10 +129,9 @@ def leaf(base, angle, length, width, color):
     return shape.rotate(angle, about_point=ORIGIN).shift(base)
 
 
-def make_tree(trunk_h, crown_w, crown_h, leaf_size, n_leaves, seed, bg):
-    """Returns (cap, trunk, crown). cap hides the stump's cut face while a
-    tree stands on it; trunk and crown sit above."""
-    rng = np.random.default_rng(seed)
+def make_trunk(trunk_h, rng):
+    """A full-width trunk continuing the stump's root flare, plus the cap
+    that hides the cut face beneath it."""
     base = FACE
     top_half = FACE_A * 0.42
 
@@ -145,21 +156,37 @@ def make_tree(trunk_h, crown_w, crown_h, leaf_size, n_leaves, seed, bg):
         p0 = px(u, FACE_PX[1] + FACE_B_PX + 5)
         p1 = base + RIGHT * top_half * f + UP * trunk_h * rng.uniform(0.8, 1.0)
         c = base + RIGHT * top_half * f * 1.15 + UP * trunk_h * 0.3
-        line = VMobject(stroke_width=2.2).set_points_smoothly(list(bezier(p0, c, p1, 6)))
-        line.add_updater(lambda m: m.set_stroke(color=bg.get_fill_color()))
-        grain.add(line)
-    trunk = VGroup(body, grain)
+        grain.add(VMobject(stroke_color=PAPER, stroke_width=2.2 * K)
+                  .set_points_smoothly(list(bezier(p0, c, p1, 6))))
+    return VGroup(cap), VGroup(body, grain), top_half
 
-    top = base + UP * trunk_h
+
+def make_sprout(trunk_h):
+    """A young shoot rising from the middle of the cut face; the rings
+    stay visible around it."""
+    stem = tapered_limb(FACE + DOWN * FACE_B * 0.3, FACE + UP * trunk_h * 0.5 + RIGHT * 0.04,
+                        FACE + UP * trunk_h, 0.16 * K, 0.07 * K)
+    return VGroup(), VGroup(stem), 0.05 * K
+
+
+def make_tree(size, seed, sprout=False):
+    """Returns (cap, trunk, crown). cap hides the stump's cut face while a
+    full trunk stands on it; trunk and crown sit above."""
+    trunk_h, crown_w, crown_h, leaf_size, n_leaves = [v * K for v in size[:4]] + [size[4]]
+    rng = np.random.default_rng(seed)
+    cap, trunk, top_half = make_sprout(trunk_h) if sprout else make_trunk(trunk_h, rng)
+
+    top = FACE + UP * trunk_h
     crown_c = top + UP * crown_h * 0.62
-    crotch = Ellipse(width=top_half * 2.1, height=top_half * 0.9,
+    crotch = Ellipse(width=max(top_half * 2.1, 0.12 * K), height=max(top_half * 0.9, 0.1 * K),
                      fill_color=BARK, fill_opacity=1, stroke_width=0).move_to(top)
     limbs = VGroup(crotch)
-    for dx, dy, w0 in ((-1.0, 0.55, 0.42), (1.0, 0.6, 0.42), (-0.3, 1.0, 0.34), (0.35, 0.95, 0.34)):
+    limb_w = 0.42 * K if not sprout else 0.1 * K
+    for dx, dy, w in ((-1.0, 0.55, 1.0), (1.0, 0.6, 1.0), (-0.3, 1.0, 0.8), (0.35, 0.95, 0.8)):
         p0 = top + RIGHT * dx * top_half * 0.5
         p1 = crown_c + RIGHT * dx * crown_w * 0.3 + UP * (dy - 0.7) * crown_h * 0.5
         c = top + RIGHT * dx * crown_w * 0.12 + UP * crown_h * 0.2
-        limbs.add(tapered_limb(p0, c, p1, w0, 0.04))
+        limbs.add(tapered_limb(p0, c, p1, limb_w * w, 0.03 * K))
 
     # Foliage: a dense mass of the grass-tuft leaf, each pointing away from
     # a hub below the crown's center so the silhouette reads as fans.
@@ -173,8 +200,9 @@ def make_tree(trunk_h, crown_w, crown_h, leaf_size, n_leaves, seed, bg):
         height_t = (p[1] - (crown_c[1] - crown_h / 2)) / crown_h
         tone = height_t * 0.8 + r * 0.3 + rng.uniform(-0.25, 0.25)
         color = BARK if tone < 0.35 else LEAF if tone < 0.72 else LEAF_LIGHT
-        size = leaf_size * rng.uniform(0.75, 1.1)
-        shades.append((tone, leaf(p - rot(RIGHT, ang) * size * 0.4, ang, size, size * 0.3, color)))
+        leaf_len = leaf_size * rng.uniform(0.75, 1.1)
+        shades.append((tone, leaf(p - rot(RIGHT, ang) * leaf_len * 0.4, ang,
+                                  leaf_len, leaf_len * 0.3, color)))
     shades.sort(key=lambda t: t[0])
     leaves = VGroup(*[m for _, m in shades])
 
@@ -184,10 +212,11 @@ def make_tree(trunk_h, crown_w, crown_h, leaf_size, n_leaves, seed, bg):
 
 
 def make_script(center, width, color):
-    """The logo's Old Persian text, stroke-only so it writes in as linework."""
+    """The logo's Old Persian text as gold linework. The paper fill hides
+    the infinity lines behind each glyph, as in the logo."""
     s = Text("\U000103BA\U000103C1\U000103D1\U000103A2 \U000103A0\U000103B6\U000103BC\U000103AB"
              "\U000103A0 \U000103AD\U000103A0\U000103B4\U000103A0", font="Noto Sans Old Persian")
-    s.set_fill(opacity=0).set_stroke(color=color, width=1.6, opacity=1)
+    s.set_fill(PAPER, opacity=1).set_stroke(color=color, width=1.6 * K, opacity=1)
     s.width = width
     return s.move_to(center)
 
@@ -227,10 +256,18 @@ class EmblemReveal:
 
 class AmurdatIntro(Scene):
     def construct(self):
-        bg = Rectangle(width=config.frame_width + 0.5, height=config.frame_height + 0.5,
-                       stroke_width=0, fill_color=PAPER, fill_opacity=1)
-        bg.set_z_index(-10)
-        self.add(bg)
+        dusk = Rectangle(width=config.frame_width + 0.5, height=config.frame_height + 0.5,
+                         stroke_width=0, fill_color=DUSK, fill_opacity=0)
+        dusk.set_z_index(10)
+        self.add(dusk)
+
+        def night(n, anims=()):
+            self.play(dusk.animate.set_fill(opacity=DUSK_OPACITY), *anims,
+                      run_time=F(n), rate_func=smooth)
+
+        def day(n, anims=()):
+            self.play(dusk.animate.set_fill(opacity=0), *anims,
+                      run_time=F(n), rate_func=smooth)
 
         emblem = EmblemReveal()
 
@@ -240,40 +277,39 @@ class AmurdatIntro(Scene):
             crown.save_state()
             crown.scale(0.05, about_point=crown.pivot)
             self.add(cap, trunk, crown)
-            self.play(AnimationGroup(FadeIn(cap), Restore(trunk), Restore(crown), lag_ratio=0.3),
-                      run_time=F(n), rate_func=smooth)
+            anims = [Restore(trunk), Restore(crown)]
+            if len(cap):
+                anims.insert(0, FadeIn(cap))
+            self.play(AnimationGroup(*anims, lag_ratio=0.3), run_time=F(n), rate_func=smooth)
 
         def cut(cap, trunk, crown, n):
             above = Group(trunk, crown)
             pivot = FACE + RIGHT * FACE_A
             self.remove(cap)
             self.play(above.animate.rotate(-0.5, about_point=pivot)
-                      .shift(RIGHT * 0.35 + DOWN * 0.25).set_opacity(0),
+                      .shift((RIGHT * 0.35 + DOWN * 0.25) * K).set_opacity(0),
                       run_time=F(n), rate_func=rush_into)
             self.remove(trunk, crown)
 
         # ---- Beat 1 (0.0-0.5) Establish: full tree on the stump ----------
-        cap, trunk, crown = make_tree(1.3, 3.9, 2.1, 0.36, 320, seed=3, bg=bg)
+        cap, trunk, crown = make_tree(FULL_TREE, seed=3)
         self.add(emblem.mob, cap, trunk, crown)
         self.wait(F(15))
 
-        # ---- Beat 2 (0.5-2.0) Day/night, accelerating ----------------------
-        for i, half in enumerate((7, 6, 5, 4)):
+        # ---- Beat 2 (0.5-2.0) Day/night: slow at first, then racing ------
+        for i, half in enumerate((10, 6, 4, 2)):
             sway = 0.03 if i % 2 == 0 else -0.03
-            self.play(bg.animate.set_fill(NIGHT),
-                      Rotate(crown, sway, about_point=crown.pivot),
-                      run_time=F(half), rate_func=smooth)
-            self.play(bg.animate.set_fill(PAPER),
-                      Rotate(crown, -sway, about_point=crown.pivot),
-                      run_time=F(half), rate_func=smooth)
+            night(half, [Rotate(crown, sway, about_point=crown.pivot)])
+            day(half, [Rotate(crown, -sway, about_point=crown.pivot)])
         self.wait(F(1))
 
         # ---- Beat 3 (2.0-4.0) Cut on the night beat, regrow — twice ------
-        for size in ((0.75, 2.4, 1.35, 0.28, 120, 5), (1.0, 3.1, 1.75, 0.32, 200, 6)):
-            self.play(bg.animate.set_fill(NIGHT), run_time=F(5))
+        # First a thin sprout from the cut face, then a broad, full tree.
+        for size, seed, sprout in ((SPROUT, 5, True), (BROAD_TREE, 6, False)):
+            night(5)
             cut(cap, trunk, crown, 5)
-            self.play(bg.animate.set_fill(PAPER), run_time=F(5))
-            cap, trunk, crown = make_tree(*size, bg=bg)
+            day(5)
+            cap, trunk, crown = make_tree(size, seed, sprout)
             grow(cap, trunk, crown, 15)
 
         # ---- Beat 4 (4.0-4.5) Final cut — only the stump remains ---------
@@ -294,16 +330,15 @@ class AmurdatIntro(Scene):
         # ---- Beat 7 (6.5-6.8) Script settles to its resting gold ---------
         self.play(script.animate.set_stroke(color=GOLD), run_time=F(9))
 
-        # ---- Beat 8 (6.8-7.6) Translation fades in, in the wordmark slot -
+        # ---- Beats 8-9 (6.8-8.0) Tagline, then AMURDAT beneath it; hold --
+        tagline = Text("“Knowledge is the only Immortal”",
+                       font="Noto Serif", slant=ITALIC, color=INK)
+        tagline.width = TAGLINE_WIDTH
+        tagline.next_to(emblem.mob, DOWN, buff=0.28)
         wordmark = ImageMobject(WORDMARK_PATH)
         wordmark.width = WORDMARK_WIDTH
-        wordmark.next_to(emblem.mob, DOWN, buff=WORDMARK_GAP)
-        translation = Text("“Knowledge is the only Immortal”",
-                           font="Noto Serif", slant=ITALIC, color=INK)
-        translation.width = WORDMARK_WIDTH * 0.95
-        translation.move_to(wordmark)
-        self.play(FadeIn(translation, shift=UP * 0.06), run_time=F(24))
-
-        # ---- Beat 9 (7.6-8.0) Wordmark replaces translation; hold --------
-        self.play(FadeOut(translation, run_time=F(3)), FadeIn(wordmark, run_time=F(6)))
-        self.wait(F(6))
+        wordmark.next_to(tagline, DOWN, buff=0.2)
+        self.play(AnimationGroup(FadeIn(tagline, shift=UP * 0.05),
+                                 FadeIn(wordmark, shift=UP * 0.05), lag_ratio=0.5),
+                  run_time=F(24))
+        self.wait(F(12))
