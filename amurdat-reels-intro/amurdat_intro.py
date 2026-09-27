@@ -102,69 +102,89 @@ def make_tree(trunk_h=3.0, canopy_r=1.15, seed=1, base_point=ORIGIN):
     return group
 
 
-def make_stump(center=ORIGIN, width=1.5):
-    """Dark filled stump with ring ripples on top and roots fanning below."""
-    top_y = center[1]
-    bottom_y = top_y - 0.85
-    half_top = width / 2
-    half_bot = width / 2 * 1.35
+def grass_tuft(base, direction, color=LAVENDER, seed=0):
+    """A small cluster of pointed blades, fanning from a base point."""
+    rng = np.random.default_rng(seed)
+    tuft = VGroup()
+    for i in range(4):
+        ang = -0.55 + i * 0.37 + rng.uniform(-0.06, 0.06)
+        length = rng.uniform(0.14, 0.22)
+        tip = base + direction * length * np.cos(ang) + UP * length * (0.7 + abs(np.sin(ang)))
+        mid = (base + tip) / 2 + UP * 0.03
+        blade = VMobject(color=color, stroke_width=1.3)
+        blade.set_points_smoothly([base, mid, tip])
+        tuft.add(blade)
+    return tuft
 
-    body = Polygon(
-        np.array([center[0] - half_top, top_y, 0]),
-        np.array([center[0] + half_top, top_y, 0]),
-        np.array([center[0] + half_bot, bottom_y, 0]),
-        np.array([center[0] - half_bot, bottom_y, 0]),
-        color=VIOLET, fill_color=VIOLET, fill_opacity=1.0, stroke_width=1.5,
-    )
+
+def make_stump(center=ORIGIN, width=1.6):
+    """A single dark root-mass silhouette (not separate stick roots): a
+    filled shape with a wavy, tapering bottom edge, carved by thin
+    cream-colored gap lines to suggest individual root strands, with
+    concentric ripple rings on the cut top surface."""
+    top_y = center[1]
+    half_top = width / 2
+    half_bottom = half_top * 1.3
+    n = 9
+    base_bottom_y = top_y - 1.05
+
+    rng = np.random.default_rng(11)
+    tip_xs = np.linspace(-half_bottom, half_bottom, n)
+    tip_ys = [base_bottom_y + rng.uniform(-0.08, 0.08) for _ in tip_xs]
+
+    boundary = [np.array([center[0] - half_top, top_y, 0])]
+    for x, y in zip(tip_xs, tip_ys):
+        boundary.append(np.array([center[0] + x, y, 0]))
+    boundary.append(np.array([center[0] + half_top, top_y, 0]))
+
+    body = VMobject(color=VIOLET, fill_color=VIOLET, fill_opacity=1.0, stroke_width=1.3)
+    body.set_points_smoothly(boundary + [boundary[0]])
+
+    gaps = VGroup()
+    for i in range(1, n - 1):
+        x, y = tip_xs[i], tip_ys[i]
+        top_pt = np.array([center[0] + x * 0.88, top_y - 0.04, 0])
+        bot_pt = np.array([center[0] + x, y - 0.03, 0])
+        gap = Line(top_pt, bot_pt, color=CREAM, stroke_width=1.5)
+        gaps.add(gap)
 
     rings = VGroup(*[
-        Ellipse(width=width * 0.9 * (0.45 + 0.28 * i), height=0.14 * (0.45 + 0.28 * i),
-                color=LAVENDER, stroke_width=1.6)
-        .move_to(np.array([center[0], top_y + 0.02, 0]))
-        for i in range(3)
+        Ellipse(width=width * 0.92 * (0.32 + 0.17 * i), height=0.10 * (0.32 + 0.17 * i),
+                color=LAVENDER, stroke_width=1.3)
+        .move_to(np.array([center[0], top_y + 0.015, 0]))
+        for i in range(5)
     ])
 
-    roots = VGroup()
-    n_roots = 9
-    for i in range(n_roots):
-        t = i / (n_roots - 1)
-        x_start = center[0] - half_bot + t * (2 * half_bot)
-        start = np.array([x_start, bottom_y, 0])
-        spread = (t - 0.5) * 1.3
-        end = start + DOWN * 0.55 + RIGHT * spread * 0.35
-        root = Line(start, end, color=VIOLET, stroke_width=1.4)
-        roots.add(root)
+    leaf_l = grass_tuft(np.array([center[0] - half_bottom - 0.02, base_bottom_y + 0.35, 0]),
+                         LEFT, seed=7)
+    leaf_r = grass_tuft(np.array([center[0] + half_bottom + 0.02, base_bottom_y + 0.35, 0]),
+                         RIGHT, seed=8)
 
-    leaf_l = organic_loop(radius=0.16, bumps=6, wobble=0.2, seed=7, color=LAVENDER, sw=1.4)
-    leaf_l.move_to(np.array([center[0] - half_bot - 0.05, bottom_y + 0.12, 0]))
-    leaf_r = organic_loop(radius=0.16, bumps=6, wobble=0.2, seed=8, color=LAVENDER, sw=1.4)
-    leaf_r.move_to(np.array([center[0] + half_bot + 0.05, bottom_y + 0.12, 0]))
-
-    stump = VGroup(roots, body, rings, leaf_l, leaf_r)
+    stump = VGroup(body, gaps, rings, leaf_l, leaf_r)
     stump.body = body
     stump.rings = rings
-    stump.roots = roots
+    stump.gaps = gaps
     return stump
 
 
-def make_book(center=ORIGIN, width=2.6, height=1.05):
-    """Open book: two curved pages meeting at a center spine point."""
+def make_book(center=ORIGIN, width=2.8, height=1.3):
+    """Open book viewed from the front: each page is a proper quadrilateral
+    silhouette (inner top dip -> outer top corner -> outer bottom corner
+    -> inner spine tip), plus a couple of thin parallel curves near the
+    bottom of each page suggesting the stacked paper edge — matching the
+    logo's real book construction rather than a single rounded petal."""
     hw = width / 2
-    spine = center + DOWN * height * 0.35
-    top_dip = center + UP * height * 0.62
+    top_dip = center + UP * height * 0.20
+    spine_tip = center + DOWN * height * 0.5
+
+    def outer_top(direction):
+        return center + direction * hw + UP * height * 0.42
+
+    def outer_bottom(direction):
+        return center + direction * hw * 0.9 + DOWN * height * 0.08
 
     def page(direction):
-        """Closed gull-wing petal: spine -> outer bulge -> outer peak ->
-        inward down to the shared top dip, giving a real page silhouette
-        instead of a bare V line."""
-        outer_bulge = center + direction * hw * 0.98 + UP * height * 0.05
-        outer_peak = center + direction * hw * 0.62 + UP * height * 0.55
-        pts = [
-            spine,
-            outer_bulge,
-            outer_peak,
-            top_dip,
-        ]
+        pts = [top_dip, outer_top(direction), outer_bottom(direction), spine_tip]
         curve = VMobject(color=VIOLET, stroke_width=MED)
         curve.set_points_smoothly(pts)
         return curve
@@ -172,55 +192,49 @@ def make_book(center=ORIGIN, width=2.6, height=1.05):
     left_page = page(LEFT)
     right_page = page(RIGHT)
 
-    # a few short "page edge" ticks fanning along the top of each page
-    ticks = VGroup()
+    # thin parallel "page stack" curves near the bottom of each page
+    stacks = VGroup()
     for direction in (LEFT, RIGHT):
-        for i in range(3):
-            f = 0.3 + i * 0.28
-            base = center + UP * height * (0.3 + f * 0.28) + direction * hw * f * 0.85
-            tick = Line(base, base + UP * 0.13, color=VIOLET, stroke_width=1.4)
-            ticks.add(tick)
+        ob = outer_bottom(direction)
+        for k in range(1, 3):
+            off = UP * 0.055 * k
+            a = ob + off + direction * (-0.05 * k)
+            b = spine_tip + off
+            mid = (a + b) / 2 + DOWN * 0.02
+            s = VMobject(color=VIOLET, stroke_width=1.1)
+            s.set_points_smoothly([a, mid, b])
+            stacks.add(s)
 
-    spine_line = Line(top_dip, spine, color=VIOLET, stroke_width=1.6)
+    spine_line = Line(top_dip, spine_tip, color=VIOLET, stroke_width=1.6)
 
-    book = VGroup(left_page, right_page, spine_line, ticks)
+    book = VGroup(left_page, right_page, spine_line, stacks)
     book.left_page = left_page
     book.right_page = right_page
     book.spine_line = spine_line
-    book.spine_point = spine
-    book.ticks = ticks
+    book.spine_point = spine_tip
+    book.stacks = stacks
     return book
 
 
-def make_infinity_band(stump_top, book_spine, width=1.7, height=0.95):
-    """A figure-eight of crossing curves linking stump to book — the
-    logo's signature infinity loop, built from two crossing bezier arcs
-    plus a few thin fan lines."""
+def make_infinity_band(stump_top, book_spine, loop_radius=0.62, overlap=0.08):
+    """A clean figure-eight — two circles just touching at the center —
+    linking stump to book, plus a few thin fan lines tracing outward to
+    the book's and stump's outer edges."""
     cx = (stump_top[0] + book_spine[0]) / 2
     cy = (stump_top[1] + book_spine[1]) / 2
-    left_c = np.array([cx - width / 2, cy, 0])
-    right_c = np.array([cx + width / 2, cy, 0])
+    d = 2 * loop_radius - overlap
+    left_c = np.array([cx - d / 2, cy, 0])
+    right_c = np.array([cx + d / 2, cy, 0])
 
-    def lobe(c, sign):
-        loop = VMobject(color=VIOLET, stroke_width=1.8)
-        pts = [
-            c + sign * LEFT * width * 0.32 + UP * height * 0.42,
-            c + sign * LEFT * width * 0.55,
-            c + sign * LEFT * width * 0.32 + DOWN * height * 0.42,
-            c,
-            c + sign * RIGHT * width * 0.32 + UP * height * 0.42,
-        ]
-        loop.set_points_smoothly(pts)
-        return loop
+    lobe_l = Circle(radius=loop_radius, color=VIOLET, stroke_width=1.8).move_to(left_c)
+    lobe_r = Circle(radius=loop_radius, color=VIOLET, stroke_width=1.8).move_to(right_c)
 
-    lobe_l = lobe(left_c, -1)
-    lobe_r = lobe(right_c, 1)
-
+    total_width = d + 2 * loop_radius
     fan = VGroup()
     for t in np.linspace(-1, 1, 5):
-        start = stump_top + RIGHT * t * width * 0.45
-        end = book_spine + RIGHT * t * width * 0.25
-        mid = np.array([cx + t * width * 0.1, cy, 0])
+        start = stump_top + RIGHT * t * total_width * 0.42
+        end = book_spine + RIGHT * t * total_width * 0.24
+        mid = np.array([cx + t * total_width * 0.08, cy, 0])
         curve = VMobject(color=LAVENDER, stroke_width=1.1)
         curve.set_points_smoothly([start, mid, end])
         fan.add(curve)
@@ -352,10 +366,9 @@ class AmurdatIntro(Scene):
         # Beat 5  (0:04.5 - 0:05.5)  Book forms from the stump
         # ----------------------------------------------------------
         stump_top = stump_center + UP * 0.0
-        book = make_book(center=book_center, width=2.8, height=1.15)
+        book = make_book(center=book_center, width=2.8, height=1.3)
         band = make_infinity_band(stump_top + UP * 0.15, book.spine_point,
-                                   width=1.7, height=1.5)
-        band.move_to(((stump_top + UP * 0.15) + book.spine_point) / 2)
+                                   loop_radius=0.62, overlap=0.1)
 
         self.play(
             Create(band.fan), run_time=0.35,
@@ -366,7 +379,7 @@ class AmurdatIntro(Scene):
         )
         self.play(
             Create(book.left_page), Create(book.right_page),
-            Create(book.spine_line), Create(book.ticks),
+            Create(book.spine_line), Create(book.stacks),
             run_time=0.3,
         )
 
