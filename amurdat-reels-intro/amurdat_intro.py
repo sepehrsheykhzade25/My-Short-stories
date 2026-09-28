@@ -1,16 +1,17 @@
 """
-Amurdat Reels Intro — 8s vertical (1080x1920) animation.
+Amurdat Reels Intro — 10s vertical (1080x1920) animation.
 
-Story: a tree stands on the logo's stump, time accelerates through
-day/night, the tree is cut and regrows twice (each cut on a night beat),
-the final cut leaves the stump, the book and its lines grow up out of the
-stump, the Old Persian script writes itself in, and the tagline and
-AMURDAT wordmark settle beneath a final frame that is the logo itself.
+Story: a tree stands on the logo's stump while the sun and stars wheel
+around it, faster and faster; the tree is cut and regrows twice (each cut
+at midnight), the final cut leaves the stump, the logo's lines draw
+themselves up out of the stump and the book fades in above them, the Old
+Persian script writes itself in, and the tagline and AMURDAT wordmark
+settle beneath a final frame that holds for two seconds.
 
 The stump, book, infinity lines and wordmark are the real logo artwork
-(cut out by prepare_assets.py). The tree is drawn in the logo's own
-vocabulary: the stump's violet fill with carved grain lines for the
-trunk and limbs, and the grass-tuft leaf for the foliage.
+(cut out by prepare_assets.py). The tree, sun and stars are drawn in the
+logo's own vocabulary: the stump's violet fill and carved lines, the
+grass-tuft leaf shape, the stump's growth rings and the script's gold.
 
 Run:
     python prepare_assets.py                     # once, builds assets/
@@ -18,9 +19,13 @@ Run:
     manim -pqh amurdat_intro.py AmurdatIntro     # final
 """
 
+import heapq
+
 import numpy as np
 from PIL import Image
 from manim import *
+from scipy.interpolate import PchipInterpolator
+from scipy.ndimage import distance_transform_edt
 
 config.pixel_width = 1080
 config.pixel_height = 1920
@@ -31,13 +36,14 @@ config.frame_width = config.frame_height * config.pixel_width / config.pixel_hei
 # Palette — sampled from the logo.
 PAPER = "#F9F3ED"
 DUSK = "#1E1A33"
-DUSK_OPACITY = 0.5            # night dims the whole scene, it doesn't black it out
+DUSK_OPACITY = 0.12           # night is a faint tint, not a flash
 BARK = "#5D4686"
 LEAF = "#8776A1"
 LEAF_LIGHT = "#B3A7CC"
 DIM_GOLD = "#8B7255"
 BRIGHT_GOLD = "#D9B26B"
 GOLD = "#B08D5A"
+PALE_GOLD = "#E3CB9A"
 INK = "#4A3B7A"
 
 config.background_color = PAPER
@@ -52,7 +58,9 @@ FACE_A_PX, FACE_B_PX = 135.0, 22.5
 STUMP_CARVES_PX = (75.0, 102.0, 142.0, 188.0, 252.5)  # carved lines at the body's top
 SCRIPT_PX = (179.5, 210.0)    # center of the script band
 SCRIPT_W_PX = 309.0
-REVEAL_FEATHER_PX = 45.0
+BOOK_EDGE_PX = 96.0           # book's lower edge; it dips to ~110 at the spine
+BOOK_DIP_PX = (178.0, 18.0, 120.0)  # spine column, dip depth, dip half-width
+LINE_FEATHER_PX = 8.0         # soft tip on the lines as they draw
 
 K = 0.75                      # overall scale of the logo, tree and type
 
@@ -85,6 +93,18 @@ def px(u, v):
 FACE = px(*FACE_PX)
 FACE_A, FACE_B = FACE_A_PX * S, FACE_B_PX * S
 
+# The sky wheel: sun and stars on opposite sides of one circle around the
+# tree. They rise and set at the stump's cut face.
+SKY_CENTER = FACE + UP * 1.0
+SKY_RADIUS = 2.35
+HORIZON_Y = FACE[1]
+HORIZON_FADE = 0.6
+
+# Days elapsed at time t (seconds). Slow at first, then ever faster; the
+# half-days land on the three cuts, so each cut happens at midnight.
+DAYS = PchipInterpolator([0.0, 0.8, 1.9, 2.55, 3.05, 3.95, 4.77, 5.2],
+                         [-0.12, -0.06, 0.5, 1.0, 1.5, 2.5, 3.5, 4.1])
+
 
 def F(n):
     """n frames, in seconds."""
@@ -96,8 +116,17 @@ def rot(v, a):
     return np.array([c * v[0] - s * v[1], s * v[0] + c * v[1], 0])
 
 
+def polar(a):
+    return np.array([np.cos(a), np.sin(a), 0])
+
+
+def smooth_step(x):
+    x = np.clip(x, 0, 1)
+    return x * x * (3 - 2 * x)
+
+
 # ========================================================================
-# Tree, drawn in the logo's vocabulary
+# Shapes in the logo's vocabulary
 # ========================================================================
 
 def bezier(p0, c, p1, n):
@@ -128,6 +157,86 @@ def leaf(base, angle, length, width, color):
     shape = Polygon(*pts, fill_color=color, fill_opacity=1, stroke_width=0)
     return shape.rotate(angle, about_point=ORIGIN).shift(base)
 
+
+def make_sun(r=0.2):
+    """Gold disc, two growth-ring outlines like the stump's, and rays in the
+    grass-tuft leaf shape, alternating long and short."""
+    disc = Circle(radius=r, fill_color=GOLD, fill_opacity=1, stroke_width=0)
+    rings = VGroup(*[Circle(radius=r * f, stroke_color=GOLD, stroke_width=1.6, stroke_opacity=o)
+                     for f, o in ((1.45, 0.9), (1.8, 0.5))])
+    rays = VGroup()
+    for i in range(12):
+        a = i * TAU / 12
+        length = r * (1.05 if i % 2 == 0 else 0.7)
+        rays.add(leaf(polar(a) * r * 2.05, a, length, length * 0.32,
+                      GOLD if i % 2 == 0 else PALE_GOLD))
+    return VGroup(rings, rays, disc)
+
+
+def make_star(size, color):
+    """Four-point sparkle: two crossed grass-tuft leaves, long and short."""
+    return VGroup(
+        leaf(np.array([-1, -1, 0]) * size * 0.2, PI / 4, size * 0.57, size * 0.14, color),
+        leaf(np.array([1, -1, 0]) * size * 0.2, 3 * PI / 4, size * 0.57, size * 0.14, color),
+        leaf(LEFT * size / 2, 0, size, size * 0.2, color),
+        leaf(DOWN * size / 2, PI / 2, size, size * 0.2, color),
+    )
+
+
+# Stars, placed around the anti-sun point of the wheel:
+# (offset angle, radius, size, color). size 0 is a small dot.
+STARS = [(-0.62, 2.1, 0.34, PALE_GOLD), (-0.35, 2.2, 0.46, LEAF_LIGHT),
+         (-0.05, 2.5, 0.30, PALE_GOLD), (0.2, 2.05, 0.52, LEAF_LIGHT),
+         (0.42, 2.45, 0.28, PALE_GOLD), (0.6, 2.05, 0.40, LEAF_LIGHT),
+         (-0.18, 1.85, 0.22, LEAF_LIGHT), (0.48, 1.7, 0.20, PALE_GOLD),
+         (-0.45, 2.55, 0, PALE_GOLD), (0.05, 1.95, 0, LEAF_LIGHT), (-0.25, 2.45, 0, PALE_GOLD),
+         (0.3, 2.6, 0, LEAF_LIGHT), (0.72, 2.35, 0, PALE_GOLD), (-0.75, 2.4, 0, LEAF_LIGHT),
+         (0.12, 2.75, 0, LEAF_LIGHT)]
+
+
+def remember_opacity(mob):
+    for m in mob.family_members_with_points():
+        m.base_fill = m.get_fill_opacity()
+        m.base_stroke = m.get_stroke_opacity()
+    return mob
+
+
+def fade(mob, a):
+    """Scale each part's own fill and stroke opacity, so stroke-only rings
+    stay stroke-only (set_opacity would fill them in)."""
+    for m in mob.family_members_with_points():
+        m.set_fill(opacity=m.base_fill * a, family=False)
+        m.set_stroke(opacity=m.base_stroke * a, family=False)
+
+
+class Sky:
+    def __init__(self):
+        self.sun = remember_opacity(make_sun(0.2))
+        self.stars = []
+        for off, r, size, color in STARS:
+            mob = make_star(size, color) if size else Dot(radius=0.028, color=color)
+            self.stars.append((remember_opacity(mob), off, r))
+        self.group = VGroup(self.sun, *[m for m, _, _ in self.stars])
+        self.presence = ValueTracker(1)
+
+    def update(self, t):
+        """Place everything for time t; return how dark it is (0..1)."""
+        sun_a = PI / 2 - TAU * float(DAYS(t))
+        presence = self.presence.get_value()
+        sun_h = np.sin(sun_a)
+        # Stars only come out once the sun is down.
+        starlight = smooth_step((0.15 - sun_h) / 0.45)
+        for mob, a, r, light in [(self.sun, sun_a, SKY_RADIUS, 1.0)] + [
+                (m, sun_a + PI + off, r, starlight) for m, off, r in self.stars]:
+            p = SKY_CENTER + polar(a) * r
+            mob.move_to(p)
+            fade(mob, presence * light * np.clip((p[1] - HORIZON_Y) / HORIZON_FADE, 0, 1))
+        return presence * smooth_step((0.3 - sun_h) / 1.3)
+
+
+# ========================================================================
+# Tree
+# ========================================================================
 
 def make_trunk(trunk_h, rng):
     """A full-width trunk continuing the stump's root flare, plus the cap
@@ -221,33 +330,82 @@ def make_script(center, width, color):
     return s.move_to(center)
 
 
+# ========================================================================
+# Emblem: the stump always, then the lines drawing up, then the book
+# ========================================================================
+
+def path_distance(mask, seeds, start):
+    """Distance along `mask` pixels (8-connected) from the seed pixels,
+    each seed starting at start[seed]. Unreached pixels stay inf."""
+    h, w = mask.shape
+    dist = np.full(mask.shape, np.inf)
+    heap = []
+    for v, u in zip(*np.nonzero(seeds)):
+        dist[v, u] = start[v, u]
+        heap.append((dist[v, u], v, u))
+    heapq.heapify(heap)
+    steps = [(dv, du, np.hypot(dv, du)) for dv in (-1, 0, 1) for du in (-1, 0, 1) if dv or du]
+    while heap:
+        d, v, u = heapq.heappop(heap)
+        if d > dist[v, u]:
+            continue
+        for dv, du, c in steps:
+            nv, nu = v + dv, u + du
+            if 0 <= nv < h and 0 <= nu < w and mask[nv, nu] and d + c < dist[nv, nu]:
+                dist[nv, nu] = d + c
+                heapq.heappush(heap, (d + c, nv, nu))
+    return dist
+
+
 class EmblemReveal:
-    """The emblem image with a movable reveal front: everything at or below
-    the stump's cut face is always shown; above it, pixels appear as
-    `height` (pixels above the face) passes them, with a soft edge."""
+    """The emblem image, revealed in layers: the stump is always shown; the
+    thin lines draw themselves outward from the stump's rim, following
+    each line like a pen; the book fades in last."""
 
     def __init__(self):
         self.rgba = np.array(Image.open(EMBLEM_PATH).convert("RGBA"))
-        h, w = self.rgba.shape[:2]
+        alpha = self.rgba[..., 3].astype(float)
+        h, w = alpha.shape
         vv, uu = np.mgrid[0:h, 0:w].astype(float)
         cx, cy = FACE_PX
         rel = np.clip(1 - ((uu - cx) / FACE_A_PX) ** 2, 0, 1)
         arc_top = np.where(np.abs(uu - cx) < FACE_A_PX, cy - FACE_B_PX * np.sqrt(rel), cy)
-        self.above = arc_top - vv
-        self.full_height = cy + REVEAL_FEATHER_PX
-        self.mob = ImageMobject(self.frame(0))
+        above = arc_top - vv
+
+        self.stump = above <= 3
+        spine_u, dip, dip_w = BOOK_DIP_PX
+        book_edge = BOOK_EDGE_PX + dip * np.clip(1 - np.abs(uu - spine_u) / dip_w, 0, 1) ** 1.5
+        self.book = ~self.stump & (vv < book_edge)
+        lines = ~self.stump & ~self.book & (alpha > 25)
+
+        # Lines start at the stump's rim. Any line not connected to the rim
+        # starts when the front reaches its height instead.
+        dist = path_distance(lines, lines & (above <= 9), np.zeros_like(alpha))
+        stray = lines & np.isinf(dist)
+        if stray.any():
+            dist = np.minimum(dist, path_distance(stray, stray, np.maximum(above, 0)))
+        # Faint anti-aliased pixels take the distance of the nearest line pixel.
+        known = np.isfinite(dist)
+        _, (iv, iu) = distance_transform_edt(~known, return_indices=True)
+        self.dist = np.where(known, dist, dist[iv, iu])
+        self.line_length = float(self.dist[np.isfinite(self.dist) & ~self.stump & ~self.book].max())
+
+        self.mob = ImageMobject(self.frame(0, 0))
         self.mob.height = EMBLEM_HEIGHT
         self.mob.move_to(EMBLEM_CENTER)
 
-    def frame(self, height):
-        k = np.clip((height - self.above) / REVEAL_FEATHER_PX, 0, 1)
-        k[self.above <= 0] = 1
+    def frame(self, drawn, book):
+        """drawn: how far (in pixels along each line) the lines have drawn;
+        book: the book's opacity."""
+        k = np.clip((drawn - self.dist) / LINE_FEATHER_PX, 0, 1)
+        k[self.book] = book
+        k[self.stump] = 1
         out = self.rgba.copy()
         out[..., 3] = (self.rgba[..., 3] * k).astype(np.uint8)
         return out
 
-    def set(self, height):
-        self.mob.pixel_array = self.frame(height)
+    def show(self, drawn, book):
+        self.mob.pixel_array = self.frame(drawn, book)
 
 
 # ========================================================================
@@ -259,15 +417,20 @@ class AmurdatIntro(Scene):
         dusk = Rectangle(width=config.frame_width + 0.5, height=config.frame_height + 0.5,
                          stroke_width=0, fill_color=DUSK, fill_opacity=0)
         dusk.set_z_index(10)
-        self.add(dusk)
 
-        def night(n, anims=()):
-            self.play(dusk.animate.set_fill(opacity=DUSK_OPACITY), *anims,
-                      run_time=F(n), rate_func=smooth)
+        # The sky follows the renderer's own video clock (it advances with
+        # every written frame), behind everything else. Summing updater dt's
+        # would drift: each animation's first frame gets dt=0. The dt
+        # parameter is still needed: it marks the updater as time-based, or
+        # manim freezes the frame during waits.
+        sky = Sky()
 
-        def day(n, anims=()):
-            self.play(dusk.animate.set_fill(opacity=0), *anims,
-                      run_time=F(n), rate_func=smooth)
+        def tick(_, dt=0):
+            dusk.set_fill(opacity=DUSK_OPACITY * sky.update(self.renderer.time))
+
+        tick(None)
+        sky.group.add_updater(tick)
+        self.add(sky.group, dusk)
 
         emblem = EmblemReveal()
 
@@ -282,55 +445,50 @@ class AmurdatIntro(Scene):
                 anims.insert(0, FadeIn(cap))
             self.play(AnimationGroup(*anims, lag_ratio=0.3), run_time=F(n), rate_func=smooth)
 
-        def cut(cap, trunk, crown, n):
+        def cut(cap, trunk, crown, n, *also):
             above = Group(trunk, crown)
             pivot = FACE + RIGHT * FACE_A
             self.remove(cap)
-            self.play(above.animate.rotate(-0.5, about_point=pivot)
-                      .shift((RIGHT * 0.35 + DOWN * 0.25) * K).set_opacity(0),
-                      run_time=F(n), rate_func=rush_into)
+            self.play(above.animate(run_time=F(n), rate_func=rush_into)
+                      .rotate(-0.5, about_point=pivot)
+                      .shift((RIGHT * 0.35 + DOWN * 0.25) * K).set_opacity(0), *also)
             self.remove(trunk, crown)
 
-        # ---- Beat 1 (0.0-0.5) Establish: full tree on the stump ----------
+        # ---- 0.0-0.8  A full tree stands on the stump, the sun is up -----
         cap, trunk, crown = make_tree(FULL_TREE, seed=3)
         self.add(emblem.mob, cap, trunk, crown)
-        self.wait(F(15))
+        self.wait(F(24))
 
-        # ---- Beat 2 (0.5-2.0) Day/night: slow at first, then racing ------
-        for i, half in enumerate((10, 6, 4, 2)):
-            sway = 0.03 if i % 2 == 0 else -0.03
-            night(half, [Rotate(crown, sway, about_point=crown.pivot)])
-            day(half, [Rotate(crown, -sway, about_point=crown.pivot)])
-        self.wait(F(1))
+        # ---- 0.8-2.8  Time passes: the sky wheel turns, ever faster ------
+        self.wait(F(60))
 
-        # ---- Beat 3 (2.0-4.0) Cut on the night beat, regrow — twice ------
+        # ---- 2.8-4.6  Cut at midnight, regrow — twice ---------------------
         # First a thin sprout from the cut face, then a broad, full tree.
         for size, seed, sprout in ((SPROUT, 5, True), (BROAD_TREE, 6, False)):
-            night(5)
+            self.wait(F(5))
             cut(cap, trunk, crown, 5)
-            day(5)
+            self.wait(F(5))
             cap, trunk, crown = make_tree(size, seed, sprout)
-            grow(cap, trunk, crown, 15)
+            grow(cap, trunk, crown, 12)
 
-        # ---- Beat 4 (4.0-4.5) Final cut — only the stump remains ---------
-        cut(cap, trunk, crown, 10)
-        self.wait(F(5))
+        # ---- 4.6-5.1  Final cut; the sky fades, only the stump remains ---
+        cut(cap, trunk, crown, 10, sky.presence.animate(run_time=F(15)).set_value(0))
+        sky.group.clear_updaters()
+        self.remove(sky.group, dusk)
 
-        # ---- Beat 5 (4.5-5.5) Book grows up out of the stump -------------
-        height = ValueTracker(0)
-        emblem.mob.add_updater(lambda m: emblem.set(height.get_value()))
-        self.play(height.animate.set_value(emblem.full_height), run_time=F(30), rate_func=smooth)
+        # ---- 5.1-6.9  The lines draw up out of the stump; the book fades --
+        drawn, book = ValueTracker(0), ValueTracker(0)
+        emblem.mob.add_updater(lambda m: emblem.show(drawn.get_value(), book.get_value()))
+        self.play(drawn.animate.set_value(emblem.line_length + LINE_FEATHER_PX),
+                  run_time=F(42), rate_func=linear)
+        self.play(book.animate.set_value(1), run_time=F(12), rate_func=smooth)
         emblem.mob.clear_updaters()
 
-        # ---- Beat 6 (5.5-6.5) Script writes in, dim to bright gold -------
+        # ---- 6.9-7.5  The script writes in -------------------------------
         script = make_script(px(*SCRIPT_PX), SCRIPT_W_PX * S, DIM_GOLD)
-        self.play(Write(script), run_time=F(21))
-        self.play(script.animate.set_stroke(color=BRIGHT_GOLD), run_time=F(9))
+        self.play(Write(script), run_time=F(18))
 
-        # ---- Beat 7 (6.5-6.8) Script settles to its resting gold ---------
-        self.play(script.animate.set_stroke(color=GOLD), run_time=F(9))
-
-        # ---- Beats 8-9 (6.8-8.0) Tagline, then AMURDAT beneath it; hold --
+        # ---- 7.5-8.0  Script brightens and settles; tagline, then AMURDAT -
         tagline = Text("“Knowledge is the only Immortal”",
                        font="Noto Serif", slant=ITALIC, color=INK)
         tagline.width = TAGLINE_WIDTH
@@ -338,7 +496,12 @@ class AmurdatIntro(Scene):
         wordmark = ImageMobject(WORDMARK_PATH)
         wordmark.width = WORDMARK_WIDTH
         wordmark.next_to(tagline, DOWN, buff=0.2)
-        self.play(AnimationGroup(FadeIn(tagline, shift=UP * 0.05),
-                                 FadeIn(wordmark, shift=UP * 0.05), lag_ratio=0.5),
-                  run_time=F(24))
-        self.wait(F(12))
+        self.play(
+            Succession(script.animate(run_time=F(6)).set_stroke(color=BRIGHT_GOLD),
+                       script.animate(run_time=F(9)).set_stroke(color=GOLD)),
+            FadeIn(tagline, shift=UP * 0.05, run_time=F(12)),
+            Succession(Wait(run_time=F(5)), FadeIn(wordmark, shift=UP * 0.05, run_time=F(10))),
+        )
+
+        # ---- 8.0-10.0  Hold the finished logo ---------------------------
+        self.wait(F(60))
