@@ -20,6 +20,7 @@ Run:
 """
 
 import heapq
+import os
 
 import numpy as np
 from PIL import Image
@@ -29,7 +30,7 @@ from scipy.ndimage import distance_transform_edt
 
 config.pixel_width = 1080
 config.pixel_height = 1920
-config.frame_rate = 30
+config.frame_rate = int(os.environ.get("AMURDAT_FPS", 30))   # export.sh renders at 60
 config.frame_height = 8.0
 config.frame_width = config.frame_height * config.pixel_width / config.pixel_height
 
@@ -106,9 +107,12 @@ DAYS = PchipInterpolator([0.0, 0.8, 1.9, 2.55, 3.05, 3.95, 4.77, 5.2],
                          [-0.12, -0.06, 0.5, 1.0, 1.5, 2.5, 3.5, 4.1])
 
 
+TIMELINE_FPS = 30
+
+
 def F(n):
-    """n frames, in seconds."""
-    return n / config.frame_rate
+    """n timeline frames (the timeline is counted at 30fps), in seconds."""
+    return n / TIMELINE_FPS
 
 
 def rot(v, a):
@@ -504,4 +508,6 @@ class AmurdatIntro(Scene):
         )
 
         # ---- 8.0-10.0  Hold the finished logo ---------------------------
-        self.wait(F(60))
+        # frozen_frame=False: PNG export would otherwise write this still
+        # hold as a single frame and the video would end two seconds early.
+        self.wait(F(60), frozen_frame=False)

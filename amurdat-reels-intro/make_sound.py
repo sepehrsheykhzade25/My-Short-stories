@@ -159,8 +159,8 @@ def main():
     video = sys.argv[1] if len(sys.argv) > 1 else "amurdat_intro.mp4"
     out = video.replace(".mp4", "_sound.mp4")
     subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", video, "-i", "assets/soundtrack.wav",
-                    "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-                    "-shortest", out], check=True)
+                    "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "256k",
+                    "-shortest", "-movflags", "+faststart", out], check=True)
     subprocess.run(["mv", out, video], check=True)
     print(f"integrated {measure_lufs('assets/soundtrack.wav'):.1f} LUFS, "
           f"peak {20 * np.log10(np.abs(mix).max()):.1f} dBFS")
