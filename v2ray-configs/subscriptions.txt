@@ -1,10 +1,12 @@
-# Public, auto-updating subscription links (add in your client as "Subscription group").
-# They contain many countries; after updating, filter/sort by the 🇩🇪 flag or "DE" and run "Test real delay".
+# Public, auto-updating subscription links. Add in your client as a subscription group,
+# update, then run "Test all configurations real delay".
 
-# VLESS only (large lists, updated frequently)
+# Collected from Iranian Telegram channels (more likely to work inside Iran)
+https://raw.githubusercontent.com/MhdiTaheri/V2rayCollector/main/sub/vless
+https://raw.githubusercontent.com/mohamadfg-dev/telegram-v2ray-configs-collector/main/category/vless.txt
+https://raw.githubusercontent.com/Kwinshadow/TelegramV2rayCollector/main/sublinks/vless.txt
+
+# Large general VLESS lists
 https://raw.githubusercontent.com/barry-far/V2ray-Config/main/Splitted-By-Protocol/vless.txt
 https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vless.txt
-https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/main/vless_configs.txt
-
-# Smaller, pre-filtered list
 https://raw.githubusercontent.com/MatinGhanbari/v2ray-configs/main/subscriptions/filtered/subs/vless.txt
