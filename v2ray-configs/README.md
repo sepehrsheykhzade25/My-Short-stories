@@ -14,6 +14,7 @@ here all failed for you, so they were removed from these lists.
 | `germany-vless.txt` | 380 | Configs whose server is in Germany. Many are on Hetzner/OVH IP ranges, which are often filtered. |
 | `*-base64.txt` | | Same lists in subscription format. |
 | `subscriptions.txt` | | Auto-updating public subscription links. |
+| [`wireguard/`](wireguard/) | | **WireGuard / Cloudflare WARP** options (Hiddify WARP subscription, WireGuard `.conf` files, Oblivion). |
 
 ## Subscription URLs
 
